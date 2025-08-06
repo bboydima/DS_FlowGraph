@@ -31,7 +31,7 @@ FString UFlowAsset::ValidationError_NullNodeInstance = TEXT("Node with GUID {0} 
 UFlowAsset::UFlowAsset(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, bWorldBound(true)
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	, FlowGraph(nullptr)
 #endif
 	, AllowedNodeClasses({UFlowNodeBase::StaticClass()})
@@ -224,7 +224,7 @@ bool UFlowAsset::CanFlowAssetUseFlowNodeClass(const UClass& FlowNodeClass) const
 
 bool UFlowAsset::IsFlowNodeClassInDeniedClasses(const UClass& FlowNodeClass) const
 {
-	for (const TSubclassOf<UFlowNodeBase> DeniedNodeClass : DeniedNodeClasses)
+	for (const TSubclassOf<UFlowNodeBase>& DeniedNodeClass : DeniedNodeClasses)
 	{
 		if (DeniedNodeClass && FlowNodeClass.IsChildOf(DeniedNodeClass))
 		{
@@ -239,12 +239,13 @@ bool UFlowAsset::IsFlowNodeClassInDeniedClasses(const UClass& FlowNodeClass) con
 	return false;
 }
 
-bool UFlowAsset::IsFlowNodeClassInAllowedClasses(const UClass& FlowNodeClass, const TSubclassOf<UFlowNodeBase> RequiredAncestor) const
+bool UFlowAsset::IsFlowNodeClassInAllowedClasses(const UClass& FlowNodeClass,
+                                                 const TSubclassOf<UFlowNodeBase>& RequiredAncestor) const
 {
 	if (AllowedNodeClasses.Num() > 0)
 	{
 		bool bAllowedInAsset = false;
-		for (const TSubclassOf<UFlowNodeBase> AllowedNodeClass : AllowedNodeClasses)
+		for (const TSubclassOf<UFlowNodeBase>& AllowedNodeClass : AllowedNodeClasses)
 		{
 			// If a RequiredAncestor is provided, the AllowedNodeClass must be a subclass of the RequiredAncestor
 			if (AllowedNodeClass && FlowNodeClass.IsChildOf(AllowedNodeClass) && (!RequiredAncestor || AllowedNodeClass->IsChildOf(RequiredAncestor)))
@@ -293,14 +294,6 @@ bool UFlowAsset::CanFlowAssetReferenceFlowNode(const UClass& FlowNodeClass, FTex
 	return true;
 }
 
-TSharedPtr<IFlowGraphInterface> UFlowAsset::FlowGraphInterface = nullptr;
-
-void UFlowAsset::SetFlowGraphInterface(TSharedPtr<IFlowGraphInterface> InFlowAssetEditor)
-{
-	check(!FlowGraphInterface.IsValid());
-	FlowGraphInterface = InFlowAssetEditor;
-}
-
 UFlowNode* UFlowAsset::CreateNode(const UClass* NodeClass, UEdGraphNode* GraphNode)
 {
 	UFlowNode* NewNode = NewObject<UFlowNode>(this, NodeClass, NAME_None, RF_Transactional);
@@ -316,7 +309,11 @@ void UFlowAsset::RegisterNode(const FGuid& NewGuid, UFlowNode* NewNode)
 	Nodes.Emplace(NewGuid, NewNode);
 
 	HarvestNodeConnections();
-	(void)TryUpdateManagedFlowPinsForNode(*NewNode);
+
+	if (TryUpdateManagedFlowPinsForNode(*NewNode))
+	{
+		(void) NewNode->OnReconstructionRequested.ExecuteIfBound();
+	}
 }
 
 void UFlowAsset::UnregisterNode(const FGuid& NodeGuid)
@@ -491,11 +488,6 @@ bool UFlowAsset::TryUpdateManagedFlowPinsForNode(UFlowNode& FlowNode)
 			if (bAutoOutputDataPinsChanged)
 			{
 				FlowNode.SetAutoOutputDataPins(WorkingData.AutoOutputDataPinsNext);
-			}
-
-			if (FlowNode.GraphNode)
-			{
-				FlowNode.OnReconstructionRequested.ExecuteIfBound();
 			}
 		}
 
@@ -1474,9 +1466,9 @@ bool UFlowAsset::IsBoundToWorld_Implementation()
 void UFlowAsset::LogError(const FString& MessageToLog, const UFlowNodeBase* Node) const
 {
 	// this is runtime log which is should be only called on runtime instances of asset
-	if (TemplateAsset == nullptr)
+	if (TemplateAsset)
 	{
-		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on null template asset %s"), *MessageToLog);
+		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on asset instance %s"), *MessageToLog);
 	}
 
 	if (RuntimeLog.Get())
@@ -1489,9 +1481,9 @@ void UFlowAsset::LogError(const FString& MessageToLog, const UFlowNodeBase* Node
 void UFlowAsset::LogWarning(const FString& MessageToLog, const UFlowNodeBase* Node) const
 {
 	// this is runtime log which is should be only called on runtime instances of asset
-	if (TemplateAsset == nullptr)
+	if (TemplateAsset)
 	{
-		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on null template asset %s"), *MessageToLog);
+		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on asset instance %s"), *MessageToLog);
 	}
 
 	if (RuntimeLog.Get())
@@ -1504,9 +1496,9 @@ void UFlowAsset::LogWarning(const FString& MessageToLog, const UFlowNodeBase* No
 void UFlowAsset::LogNote(const FString& MessageToLog, const UFlowNodeBase* Node) const
 {
 	// this is runtime log which is should be only called on runtime instances of asset
-	if (TemplateAsset == nullptr)
+	if (TemplateAsset)
 	{
-		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on null template asset %s"), *MessageToLog);
+		UE_LOG(LogFlow, Log, TEXT("Attempted to use Runtime Log on asset instance %s"), *MessageToLog);
 	}
 
 	if (RuntimeLog.Get())
